@@ -1,0 +1,100 @@
+
+# type: LoadBalancer
+# In addition to creating a regular Service, and opening a port on every node as with type: NodePort,
+# it also exposes the service externally using a cloud provider’s load balancer.
+# Works only when the cloud provider has Kubernetes support and provisions a load balancer.
+# The exact way that load-balancer provisioning is performed and service discovery vary among cloud providers.
+
+# $ kubectl get all -o wide
+#   NAME                       READY   STATUS    RESTARTS   AGE   IP            NODE            NOMINATED NODE   READINESS GATES
+#   pod/web-85bc788f78-5nzck   1/1     Running   0          47s   10.100.0.73   nlabict061526   <none>           <none>
+#   pod/web-85bc788f78-b2p4p   1/1     Running   0          47s   10.100.0.25   nlabict061525   <none>           <none>
+#   pod/web-85bc788f78-hl8k7   1/1     Running   0          47s   10.100.0.74   nlabict061526   <none>           <none>
+#   pod/web-85bc788f78-m7z6z   1/1     Running   0          47s   10.100.0.72   nlabict061526   <none>           <none>
+#   
+#   NAME                 TYPE           CLUSTER-IP       EXTERNAL-IP   PORT(S)          AGE     SELECTOR
+#   service/web          LoadBalancer   10.106.108.140   <pending>     8080:30411/TCP   47s     app=web
+#   
+#   NAME                  READY   UP-TO-DATE   AVAILABLE   AGE   CONTAINERS   IMAGES         SELECTOR
+#   deployment.apps/web   4/4     4            4           47s   web          nginx:latest   app=web
+#   
+#   NAME                             DESIRED   CURRENT   READY   AGE   CONTAINERS   IMAGES         SELECTOR
+#   replicaset.apps/web-85bc788f78   4         4         4       47s   web          nginx:latest   app=web,pod-template-hash=85bc788f78
+#
+# $ kubectl get ep
+#   NAME         ENDPOINTS                                                  AGE
+#   kubernetes   10.194.65.70:6443                                          7d23h
+#   web          10.100.0.25:80,10.100.0.72:80,10.100.0.73:80 + 1 more...   55s
+#
+# $ kubectl get service/web -o yaml
+#   apiVersion: v1
+#   kind: Service
+#   ......
+#   spec:
+#     clusterIP: 10.106.108.140          # Assigned by k8s
+#     clusterIPs:
+#     - 10.106.108.140
+#     externalTrafficPolicy: Cluster
+#     ipFamilies:
+#     - IPv4
+#     ipFamilyPolicy: SingleStack
+#     ports:
+#     - nodePort: 30411                   # Assigned by k8s
+#       port: 8080
+#       protocol: TCP
+#       targetPort: 80
+#     selector:
+#       app: web
+#     sessionAffinity: None
+#     type: LoadBalancer
+#   status:
+#     loadBalancer: {}                   # If LoadBalancer is supported, k8s would add the Ingress IP
+#                                        # EXTERNAL-IP in output of kubectl get all -o wide would not be <pending>
+#
+# $ curl http://my-worker-1:32766     # Node port works on the k8s node
+# $ curl http://my-worker-2:32766
+#
+# $ kubectl exec -it pod/web-85bc788f78-5nzck -- sh
+#   # curl http://10.106.108.140:8080  # ClusterIP works when on the k8s cluster
+#   # curl http://10.100.0.72:80
+#   # curl http://10.100.0.74:80
+#   # curl http://10.100.0.73:80
+#   # curl http://10.100.0.25:80      # may not work depending on networking settings; pod on another node
+#
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: web
+spec:
+  replicas: 4
+  selector:
+    matchLabels:
+      app: web
+  template:
+    metadata:
+      labels:
+        app: web
+    spec:
+      containers:
+      - image: nginx:latest
+        name: web
+        ports:
+        - containerPort: 80       # nginx service port
+          protocol: TCP
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: web
+spec:
+  type: LoadBalancer             # Open port on all nodes; expose service to outside of the k8s cluster
+  selector:
+    app: web
+  ports:
+  - port: 8080                    # Port over which this Service can be contacted
+    targetPort: 80                # Port on which the Pods are listening
+    protocol: TCP
+
+

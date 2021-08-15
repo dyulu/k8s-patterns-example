@@ -1,0 +1,89 @@
+#
+# kubectl get all
+#    NAME                 READY   STATUS    RESTARTS   AGE
+#    pod/self-aware-pod   1/1     Running   0          62s
+# kubectl logs pod/self-aware-pod
+#    Pod is Running -- POD_IP:10.100.0.20, NODE_NAME:my-worker-node ...
+# kubectl exec -it self-aware-pod -- sh
+#    / # pwd
+#    /
+#    / # cd pod-info/
+#    /pod-info # ls
+#    annotations  labels
+#    /pod-info # cat annotations 
+#    kubectl.kubernetes.io/last-applied-configuration="{\"apiVersion\":\"v1\",\"kind\":\"Pod\",\"metadata\":{\"annotations\":{},\"labels\":{\"app\":\"self-aware-pod\"},\"name\":\"self-aware-pod\",\"namespace\":\"default\"},\"spec\":{\"containers\":[{\"command\":[\"sh\",\"-c\",\"echo Pod is Running -- POD_IP:${POD_IP}, NODE_NAME:${NODE_NAME} ...; sleep 3600\"],\"env\":[{\"name\":\"PATTERN\",\"value\":\"Self Awareness\"},{\"name\":\"POD_IP\",\"valueFrom\":{\"fieldRef\":{\"fieldPath\":\"status.podIP\"}}},{\"name\":\"NODE_NAME\",\"valueFrom\":{\"fieldRef\":{\"fieldPath\":\"spec.nodeName\"}}}],\"image\":\"alpine\",\"imagePullPolicy\":\"IfNotPresent\",\"name\":\"self-aware-pod\",\"volumeMounts\":[{\"mountPath\":\"/pod-info\",\"name\":\"pod-info\"}]}],\"volumes\":[{\"downwardAPI\":{\"items\":[{\"fieldRef\":{\"fieldPath\":\"metadata.labels\"},\"path\":\"labels\"},{\"fieldRef\":{\"fieldPath\":\"metadata.annotations\"},\"path\":\"annotations\"}]},\"name\":\"pod-info\"}]}}\n"
+#    kubernetes.io/config.seen="2021-08-08T22:55:27.517397904Z"
+#    kubernetes.io/config.source="api"
+#    /pod-info # cat labels
+#    app="self-aware-pod"
+#
+# kubectl get pod/self-aware-pod -o yaml
+#    apiVersion: v1
+#    kind: Pod
+#    metadata:
+#      annotations:
+#        kubectl.kubernetes.io/last-applied-configuration: |
+#          {"apiVersion":"v1","kind":"Pod","metadata":{"annotations":{},"labels":{"app":"self-aware-pod"},"name":"self-aware-pod","namespace":"default"},"spec":{"containers":[{"command":["sh","-c","echo Pod is Running -- POD_IP:${POD_IP}, NODE_NAME:${NODE_NAME} ...; sleep 3600"],"env":[{"name":"PATTERN","value":"Self Awareness"},{"name":"POD_IP","valueFrom":{"fieldRef":{"fieldPath":"status.podIP"}}},{"name":"NODE_NAME","valueFrom":{"fieldRef":{"fieldPath":"spec.nodeName"}}}],"image":"alpine","imagePullPolicy":"IfNotPresent","name":"self-aware-pod","volumeMounts":[{"mountPath":"/pod-info","name":"pod-info"}]}],"volumes":[{"downwardAPI":{"items":[{"fieldRef":{"fieldPath":"metadata.labels"},"path":"labels"},{"fieldRef":{"fieldPath":"metadata.annotations"},"path":"annotations"}]},"name":"pod-info"}]}}
+#      creationTimestamp: "2021-08-03T22:55:28Z"
+#      labels:
+#        app: self-aware-pod
+#
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: self-aware-pod
+  labels:
+    app: self-aware-pod
+spec:
+  containers:
+  - image: alpine
+    imagePullPolicy: IfNotPresent
+    command: ['sh', '-c', 'echo Pod is Running -- POD_IP:${POD_IP}, NODE_NAME:${NODE_NAME} ...; sleep 3600']
+    name: self-aware-pod
+    env:
+    - name: PATTERN
+      value: Self Awareness
+    # The Downward API allows access to fields
+    # in this declaration
+    - name: POD_IP
+      valueFrom:
+        fieldRef:
+          fieldPath: status.podIP
+    - name: NODE_NAME
+      valueFrom:
+        fieldRef:
+          fieldPath: spec.nodeName
+    volumeMounts:
+    - name: pod-info
+      mountPath: /pod-info
+  volumes:
+  - name: pod-info
+    downwardAPI:
+      items:
+      - path: labels
+        fieldRef:
+          fieldPath: metadata.labels
+      - path: annotations
+        fieldRef:
+          fieldPath: metadata.annotations
+
+# Downward API information available in fieldRef.fieldPath
+# Name                             Description
+# spec.nodeName                    Name of node hosting the Pod
+# status.hostIP                    IP address of node hosting the Pod
+# metadata.name                    Pod name
+# metadata.namespace               Namespace in which the Pod is running
+# status.podIP                     Pod IP address
+# spec.serviceAccountName          ServiceAccount that is used for the Pod
+# metadata.uid                     Unique ID of the Pod
+# metadata.labels['key']           Value of the Pod’s label key
+# metadata.annotations['key']      Value of the Pod’s annotation key
+#
+# Downward API information available in resourceFieldRef.resource
+# Name                             Description
+# requests.cpu                     A container’s CPU request
+# limits.cpu                       A container’s CPU limit
+# limits.memory                    A container’s memory request
+# requests.memory                  A container’s memory limit
+#

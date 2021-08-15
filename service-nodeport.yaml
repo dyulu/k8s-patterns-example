@@ -1,0 +1,83 @@
+
+# type:NodePort Service builds on top of a regular Service with type: ClusterIP by also opening a port on every node
+# Limitation: need a load balancer for client applications to pick a healthy node
+# Service type LoadBalancer addresses this limitation
+
+# $ kubectl get all -o wide
+#   NAME                       READY   STATUS    RESTARTS   AGE   IP            NODE          NOMINATED NODE   READINESS GATES
+#   pod/web-85bc788f78-dwbr2   1/1     Running   0          19s   10.100.0.70   my-worker-2   <none>           <none>
+#   pod/web-85bc788f78-g8p4r   1/1     Running   0          19s   10.100.0.24   my-worker-1   <none>           <none>
+#   pod/web-85bc788f78-l46bz   1/1     Running   0          19s   10.100.0.69   my-worker-2   <none>           <none>
+#   pod/web-85bc788f78-mrxgc   1/1     Running   0          19s   10.100.0.71   my-worker-2   <none>           <none>
+#   
+#   NAME                 TYPE        CLUSTER-IP      EXTERNAL-IP   PORT(S)          AGE     SELECTOR
+#   service/web          NodePort    10.110.11.218   <none>        8080:32766/TCP   19s     app=web
+#   
+#   NAME                  READY   UP-TO-DATE   AVAILABLE   AGE   CONTAINERS   IMAGES         SELECTOR
+#   deployment.apps/web   4/4     4            4           19s   web          nginx:latest   app=web
+#   
+#   NAME                             DESIRED   CURRENT   READY   AGE   CONTAINERS   IMAGES         SELECTOR
+#   replicaset.apps/web-85bc788f78   4         4         4       19s   web          nginx:latest   app=web,pod-template-hash=85bc788f78
+#   
+# $ kubectl get ep
+#   NAME         ENDPOINTS                                                  AGE
+#   kubernetes   10.194.65.70:6443                                          7d22h
+#   web          10.100.0.24:80,10.100.0.69:80,10.100.0.70:80 + 1 more...   31s
+#   
+# $ curl http://my-worker-1:32766     # Node port works on the k8s node
+# $ curl http://my-worker-2:32766
+#
+# $ kubectl exec -it pod/web-85bc788f78-dwbr2 -- sh
+#   # curl http://10.110.11.218:8080  # ClusterIP works when on the k8s cluster
+#   # curl http://10.100.0.70:80
+#   # curl http://10.100.0.69:80
+#   # curl http://10.100.0.71:80
+#   # curl http://10.100.0.24:80      # may not work depending on networking settings; pod on another node
+#
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: web
+spec:
+  replicas: 4
+  selector:
+    matchLabels:
+      app: web
+  template:
+    metadata:
+      labels:
+        app: web
+    spec:
+      containers:
+      - image: nginx:latest
+        name: web
+        ports:
+        - containerPort: 80       # nginx service port
+          protocol: TCP
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: web
+spec:
+  type: NodePort                  # Open port on all nodes; expose service to outside of the k8s cluster
+  selector:
+    app: web
+  ports:
+  - port: 8080                    # Port over which this Service can be contacted
+    targetPort: 80                # Port on which the Pods are listening
+    protocol: TCP
+    nodePort: 32766               # Specify a fixed port (which needs to be available) or
+                                  # leave this out to get a ran‐ domly selected port assigned (30000 - 32767)
+                                  # Need to congifure firewall rule to let external clients access the node port
+# An external client can open connection to any node in the cluster. However, if the node is not available, it is
+# the responsibility of the client application to connect to another healthy node. For this purpose, it may be a
+# good idea to put a load balancer in front of the nodes that picks healthy nodes and performs failover.
+
+# When a client opens a connection through the node port, it is routed to a randomly chosen Pod that may be on the
+# same node where the connection was open or a different node. It is possible to avoid this extra hop and always
+# force Kubernetes to pick a Pod on the node where the connection was opened by adding externalTrafficPolicy: Local
+# to the Service definition.
+

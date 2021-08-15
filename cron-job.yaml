@@ -1,0 +1,61 @@
+#
+# kubectl get all
+#   NAME                            READY   STATUS      RESTARTS   AGE
+#   pod/helloworld-27133830-rdzqv   0/1     Completed   0          2m24s
+#   pod/helloworld-27133831-mm67v   0/1     Completed   0          84s
+#   pod/helloworld-27133832-twg4l   0/1     Completed   0          24s
+#   
+#   NAME                       SCHEDULE      SUSPEND   ACTIVE   LAST SCHEDULE   AGE
+#   cronjob.batch/helloworld   */1 * * * *   False     0        25s             4m5s
+#   
+#   NAME                            COMPLETIONS   DURATION   AGE
+#   job.batch/helloworld-27133830   1/1           2s         2m25s
+#   job.batch/helloworld-27133831   1/1           3s         85s
+#   job.batch/helloworld-27133832   1/1           2s         25s
+#   
+# kubectl logs pod/helloworld-27133830-rdzqv
+#   Sun Aug  8 22:30:00 UTC 2021
+#   Hello World
+# kubectl logs pod/helloworld-27133831-mm67v
+#   Sun Aug  8 22:31:01 UTC 2021
+#   Hello World
+# kubectl logs pod/helloworld-27133832-twg4l
+#   Sun Aug  8 22:32:00 UTC 2021
+#   Hello World
+#
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: helloworld
+spec:
+  schedule: "*/1 * * * *"    # every minute
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          containers:
+          - name: helloworld
+            image: busybox
+            imagePullPolicy: IfNotPresent
+            command:
+            - /bin/sh
+            - -c
+            - date; echo Hello World
+          restartPolicy: OnFailure
+
+# ┌───────────── minute (0 - 59)
+# │ ┌───────────── hour (0 - 23)
+# │ │ ┌───────────── day of the month (1 - 31)
+# │ │ │ ┌───────────── month (1 - 12)
+# │ │ │ │ ┌───────────── day of the week (0 - 6) (Sunday to Saturday;
+# │ │ │ │ │                                   7 is also Sunday on some systems)
+# │ │ │ │ │
+# │ │ │ │ │
+# * * * * *
+
+# @yearly (or @annually)  Run once a year at midnight of 1 January                    0 0 1 1 *
+# @monthly                Run once a month at midnight of the first day of the month  0 0 1 * *
+# @weekly                 Run once a week at midnight on Sunday morning               0 0 * * 0
+# @daily (or @midnight)   Run once a day at midnight                                  0 0 * * *
+# @hourly                 Run once an hour at the beginning of the hour               0 * * * *

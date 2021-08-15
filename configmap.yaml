@@ -1,0 +1,121 @@
+# kubectl apply -f configmap.yaml
+#
+# kubectl get all
+#     NAME                     READY   STATUS    RESTARTS   AGE
+#     pod/configmap-demo-pod   1/1     Running   0          6s
+#
+# kubectl exec --stdin --tty pod/configmap-demo-pod -- sh
+#     # ls /config
+#     game.properties            user-interface.properties
+#     # cat /config/game.properties
+#     enemy.types=aliens,monsters
+#     player.maximum-lives=5
+#     # cat /config/user-interface.properties
+#     color.good=purple
+#     color.bad=yellow
+#     allow.textmode=true
+#     # printenv
+#     ...
+#     UI_PROPERTIES_FILE_NAME=user-interface.properties
+#     ...
+#     PLAYER_INITIAL_LIVES=3
+#     ...
+#     # printenv | grep CONFIG_
+#     CONFIG_game.properties=enemy.types=aliens,monsters
+#     CONFIG_user-interface.properties=color.good=purple
+#     CONFIG_ui_properties_file_name=user-interface.properties
+#     CONFIG_player_initial_lives=3
+#     # printenv
+#     ...
+#     UI_PROPERTIES_FILE_NAME=user-interface.properties
+#     ...
+#     CONFIG_game.properties=enemy.types=aliens,monsters
+#     player.maximum-lives=5
+#
+#     ...
+#     CONFIG_user-interface.properties=color.good=purple
+#     color.bad=yellow
+#     allow.textmode=true
+#
+#     ...
+#     CONFIG_ui_properties_file_name=user-interface.properties
+#     ...
+#     PLAYER_INITIAL_LIVES=3
+#     ...
+#     CONFIG_player_initial_lives=3
+#     ...
+#     # ls /config2
+#     game.properties            player_initial_lives       ui_properties_file_name    user-interface.properties
+#
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: configmap-demo-pod
+spec:
+  containers:
+    - name: demo
+      image: alpine
+      imagePullPolicy: IfNotPresent
+      command: ["sleep", "3600"]
+      env:
+        # Define the environment variable
+        - name: PLAYER_INITIAL_LIVES # Notice that the case is different here
+                                     # from the key name in the ConfigMap.
+          valueFrom:
+            configMapKeyRef:
+              name: game-demo           # The ConfigMap this value comes from.
+              key: player_initial_lives # The key to fetch.
+        - name: UI_PROPERTIES_FILE_NAME
+          valueFrom:
+            configMapKeyRef:
+              name: game-demo
+              key: ui_properties_file_name
+      envFrom:
+        - configMapRef:
+            name: game-demo
+            optional: false
+          prefix: CONFIG_
+      volumeMounts:
+      - name: config
+        mountPath: "/config"
+        readOnly: true
+      - name: config2
+        mountPath: "/config2"
+        readOnly: true
+  volumes:
+    # You set volumes at the Pod level, then mount them into containers inside that Pod
+    - name: config
+      configMap:
+        # Provide the name of the ConfigMap you want to mount.
+        name: game-demo
+        # An array of keys from the ConfigMap to create as files
+        items:
+        - key: "game.properties"
+          path: "game.properties"
+        - key: "user-interface.properties"
+          path: "user-interface.properties"
+    - name: config2
+      configMap:
+        # Provide the name of the ConfigMap you want to mount.
+        name: game-demo
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: game-demo
+data:
+  # property-like keys; each key maps to a simple value
+  player_initial_lives: "3"
+  ui_properties_file_name: "user-interface.properties"
+
+  # file-like keys
+  game.properties: |
+    enemy.types=aliens,monsters
+    player.maximum-lives=5
+  user-interface.properties: |
+    color.good=purple
+    color.bad=yellow
+    allow.textmode=true
+

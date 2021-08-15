@@ -1,0 +1,74 @@
+
+#
+# $ ls /home/www
+#   index.html
+# $ cat /home/www/index.html 
+#   welcome!!!
+#
+# $ kubectl get all -o wide
+#   NAME                       READY   STATUS    RESTARTS   AGE   IP            NODE              NOMINATED NODE   READINESS GATES
+#   pod/web-86f7b94565-6jzsd   1/1     Running   0          7s    172.17.0.10   scspa2389321001   <none>           <none>
+#   pod/web-86f7b94565-jljqp   1/1     Running   0          7s    172.17.0.9    scspa2389321001   <none>           <none>
+#   pod/web-86f7b94565-vl2nc   1/1     Running   0          7s    172.17.0.11   scspa2389321001   <none>           <none>
+#   pod/web-86f7b94565-x9cwk   1/1     Running   0          7s    172.17.0.8    scspa2389321001   <none>           <none>
+#   
+#   NAME                 TYPE        CLUSTER-IP       EXTERNAL-IP   PORT(S)    AGE   SELECTOR
+#   service/web          ClusterIP   10.109.148.122   <none>        8080/TCP   7s    app=web
+#   
+#   NAME                  READY   UP-TO-DATE   AVAILABLE   AGE   CONTAINERS   IMAGES         SELECTOR
+#   deployment.apps/web   4/4     4            4           8s    web          nginx:latest   app=web
+#   
+#   NAME                             DESIRED   CURRENT   READY   AGE   CONTAINERS   IMAGES         SELECTOR
+#   replicaset.apps/web-86f7b94565   4         4         4       8s    web          nginx:latest   app=web,pod-template-hash=86f7b94565
+#
+# $ kubectl exec -it pod/web-86f7b94565-6jzsd -- bash
+#   root@web-86f7b94565-6jzsd:/# curl http://10.109.148.122:8080
+#   welcome!!!
+#   root@web-86f7b94565-6jzsd:/# ls /usr/share/nginx/html
+#   index.html
+#
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: web
+spec:
+  replicas: 4
+  selector:
+    matchLabels:
+      app: web
+  template:
+    metadata:
+      labels:
+        app: web
+    spec:
+      containers:
+        - name: web
+          image: nginx:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 80       # nginx service port
+              protocol: TCP
+          volumeMounts:
+            - mountPath: /usr/share/nginx/html
+              name: html-home
+      volumes:
+        - name: html-home
+          hostPath:
+            path: /home/www/
+            type: DirectoryOrCreate  # DirectoryOrCreate, Directory, FileOrCreate, File, Socket, CharDevice, BlockDevice
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: web
+spec:
+  selector:                 # Default type: ClusterIP; accessible only from within the Kubernetes cluster
+    app: web                # Selector matching Pod labels
+  ports:
+  - port: 8080              # Port over which this Service can be contacted
+    protocol: TCP
+    targetPort: 80          # Port on which the Pods are listening
+

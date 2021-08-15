@@ -1,0 +1,87 @@
+# kubectl apply -f sidecar.yaml
+#
+# kubectl get all
+#     NAME          READY   STATUS    RESTARTS   AGE
+#     pod/web-app   2/2     Running   0          7s
+#
+#     NAME                 TYPE        CLUSTER-IP     EXTERNAL-IP   PORT(S)          AGE
+#     service/web-app      NodePort    10.96.86.148   <none>        8080:30007/TCP   7s
+#
+# kubectl exec -it pod/web-app -c app -- /bin/bash
+#     [root@web-app /]# ls /var/www/html
+#     README.md  notes.txt  sequence_diagram.txt  src
+#
+# kubectl exec -it pod/web-app -c poll -- sh
+#     /var/lib/data # ls
+#     README.md             notes.txt             sequence_diagram.txt  src
+#
+# curl http://10.96.86.148:8080/README.md         # When on the cluster
+# curl http://nodeIP:30007/README.md
+#
+# Example for a HTTP server with a git pulling sidecar
+# Kind List allows to write multiple objects into one file like triple dashes
+#
+---
+apiVersion: v1
+kind: List
+items:
+- apiVersion: v1
+  kind: Pod
+  metadata:
+    name: web-app
+    labels:
+      project: k8spatterns
+      pattern: Sidecar
+  spec:
+    containers:
+    # Main container is a stock httpd serving from /var/www/html
+    - name: app
+      image: docker.io/centos/httpd
+      imagePullPolicy: IfNotPresent
+      ports:
+        - containerPort: 80
+      volumeMounts:
+      - mountPath: /var/www/html
+        name: git
+    # Sidecar poll every 10 minutes a given repository with git
+    - name: poll
+      image: alpine/git
+      imagePullPolicy: IfNotPresent
+      volumeMounts:
+      - mountPath: /var/lib/data
+        name: git
+      env:
+        - name: GIT_REPO
+          value: https://github.com/dyulu/k8s_cr_example.git
+      command:
+      - "sh"
+      - "-c"
+      - "git clone $(GIT_REPO) . && watch -n 600 git pull"
+      workingDir: /var/lib/data
+    volumes:
+    # The shared directory for holding the files
+    - emptyDir: {}
+      name: git
+# A service which opens a NodePort is added for your convenience 
+# but is not necessarily required for this example:
+- apiVersion: v1
+  kind: Service
+  metadata:
+    labels:
+      project: k8spatterns
+      pattern: Sidecar
+    name: web-app
+  spec:
+    ports:
+    - name: http
+      port: 8080
+      protocol: TCP
+      targetPort: 80
+      # Optional field
+      # By default and for convenience, the Kubernetes control plane will allocate a port from a range (default: 30000-32767)
+      nodePort: 30007
+    selector:
+      pattern: Sidecar
+    # Just for demo
+    type: NodePort
+    clusterIP: 10.96.86.148

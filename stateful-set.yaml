@@ -1,0 +1,178 @@
+
+# Stateless Pods created through a ReplicaSet are assumed to be identical, and it doesn’t matter on which one a
+# request lands (hence the load balancing with a regular Service). But stateful Pods differ from each other,
+# and we may need to reach a specific Pod by its coordinates. A headless Service with selectors enables this.
+# Such a Service creates Endpoint records in the API Server, and creates DNS entries to return A records
+# (addresses) that point directly to the Pods backing the Service. Each Pod gets a DNS entry where clients can
+# directly reach out to it in a predictable way.
+
+# The Pod names are generated in a predictable format that differs from the ReplicaSet’s Pod-name-generation
+# mechanism, which contains a random suffix.
+
+# For StatefulSet, Pods have names that have an ordinal suffix (starting from 0), and that Pod creation order
+# also defines the order in which Pods are scaled up and scaled down (in reverse order, from n – 1 to 0).
+
+# For ReplicaSet, Pods are scheduled and started together without waiting for the first one to start successfully.
+# The order in which Pods are starting and are ready is not guaranteed. It is the same when we scale down a
+# ReplicaSet.
+
+# Scaling up a StatefulSet (increasing the replicas count) creates new Pods and associated PVCs.
+# Scaling down deletes the Pods, but it does not delete any PVCs (nor PVs).
+
+# # Ordered Pod Creation: web-1 created after web-0 running
+# kubectl get pods -w -l app=nginx
+#    NAME    READY   STATUS    RESTARTS   AGE
+#    web-0   0/1     Pending   0          0s
+#    web-0   0/1     Pending   0          0s
+#    web-0   0/1     Pending   0          2s
+#    web-0   0/1     ContainerCreating   0          2s
+#    web-0   1/1     Running             0          6s
+#    web-1   0/1     Pending             0          0s
+#    web-1   0/1     Pending             0          0s
+#    web-1   0/1     Pending             0          2s
+#    web-1   0/1     ContainerCreating   0          2s
+#    web-1   1/1     Running             0          5s
+#
+# # When StatefulSet is deleted, or scaled up/down, PVs/PVCs are untouched
+# kubectl get pv
+#    NAME       CAPACITY   ACCESS MODES   RECLAIM POLICY   STATUS   CLAIM               STORAGECLASS   REASON   AGE
+#    nfs-pv-1   1Gi        RWO            Retain           Bound    default/www-web-0   nfs                     22s
+#    nfs-pv-2   1Gi        RWO            Retain           Bound    default/www-web-1   nfs                     22s
+#
+# kubectl get pvc
+#    NAME        STATUS   VOLUME     CAPACITY   ACCESS MODES   STORAGECLASS   AGE
+#    www-web-0   Bound    nfs-pv-1   1Gi        RWO            nfs            25s
+#    www-web-1   Bound    nfs-pv-2   1Gi        RWO            nfs            19s
+#
+# kubectl get all
+#    NAME        READY   STATUS    RESTARTS   AGE
+#    pod/web-0   1/1     Running   0          28s
+#    pod/web-1   1/1     Running   0          22s
+#    
+#    NAME                 TYPE        CLUSTER-IP   EXTERNAL-IP   PORT(S)   AGE
+#    service/nginx        ClusterIP   None         <none>        80/TCP    28s
+#    
+#    NAME                   READY   AGE
+#    statefulset.apps/web   2/2     28s
+#
+# kubectl get ep
+#    NAME         ENDPOINTS                       AGE
+#    nginx        10.100.0.47:80,10.100.0.48:80   35s
+#
+# kubectl exec -it web-0 -- sh
+#    # ls -lart /usr/share/nginx/html/dates*
+#    -rw-r--r-- 1 nobody nogroup 1972 Aug  8  2021 /usr/share/nginx/html/dates_10.100.0.40.txt
+#    -rw-r--r-- 1 nobody nogroup 1943 Aug  8  2021 /usr/share/nginx/html/dates_10.100.0.41.txt
+#    # cat /etc/hostname     
+#    web-0
+#    # cat /etc/hosts
+#    # Kubernetes-managed hosts file.
+#    127.0.0.1	localhost
+#    ::1	localhost ip6-localhost ip6-loopback
+#    fe00::0	ip6-localnet
+#    fe00::0	ip6-mcastprefix
+#    fe00::1	ip6-allnodes
+#    fe00::2	ip6-allrouters
+#    10.100.0.47	web-0.nginx.default.svc.cluster.local	web-0
+#
+
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: nfs-pv-1
+spec:
+  capacity:
+    storage: 1Gi
+  volumeMode: Filesystem
+  storageClassName: nfs
+  accessModes:      # used as labels to match a PV and a PVC; do not define any form of access control.
+    - ReadWriteOnce
+  persistentVolumeReclaimPolicy: Retain  # retain: preserve the volume after the pods
+  nfs:                                   # volume type: nfs plugin in this case
+    # nfs://nfs_server_ip/mnt/nfs/
+    path: /mnt/nfs
+    server: nfs_server_ip                # replace with nfs_server_ip
+    readOnly: false
+
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: nfs-pv-2
+spec:
+  capacity:
+    storage: 1Gi
+  volumeMode: Filesystem
+  storageClassName: nfs
+  accessModes:      # used as labels to match a PV and a PVC; do not define any form of access control.
+    - ReadWriteOnce
+  persistentVolumeReclaimPolicy: Retain  # retain: preserve the volume after the pods
+  nfs:                                   # volume type: nfs plugin in this case
+    # nfs://nfs_server_ip/mnt/nfs/
+    path: /mnt/nfs
+    server: nfs_server_ip                # replace with nfs_server_ip
+    readOnly: false
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: nginx
+  labels:
+    app: nginx
+spec:
+  ports:
+  - port: 80
+    name: web
+  clusterIP: None               # Declares this Service as headless: don’t want a kube-proxy to handle the Service
+  selector:                     #                                    don’t want a cluster IP allocation nor load balancing
+    app: nginx                  # A headless Service with selectors: load balancing between StatefulSet pods
+                                #  creates Endpoint records in the API Server
+                                #  creates DNS entries to return A records (addresses) that point directly to the Pods backing the Service
+
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: web                     # used as prefix for the generated node names
+spec:
+  serviceName: "nginx"          # References the mandatory headless Service for accessing StatefulSet
+  replicas: 2                   # Two Pod members in the StatefulSet named web-0 and web-1
+  selector:
+    matchLabels:
+      app: nginx
+  template:
+    metadata:
+      labels:
+        app: nginx
+    spec:
+      containers:
+      - name: nginx
+        image: nginx:latest
+        # Write to a file inside our NFS
+        command: ["/bin/sh"]
+        args: ["-c", "while true; do date >> /usr/share/nginx/html/dates_${POD_IP}.txt; sleep 5; done"]
+        ports:
+        - containerPort: 80
+          name: web
+        volumeMounts:
+        - name: www
+          mountPath: /usr/share/nginx/html
+        env:
+        - name: POD_IP
+          valueFrom:
+            fieldRef:
+              fieldPath: status.podIP
+  volumeClaimTemplates:         # Template for creating a PVC for each Pod; main differences between StatefulSet and ReplicaSet
+  - metadata:                   # scaling up a StatefulSet creates new Pods and associated PVCs
+      name: www                 # scaling down deletes the Pods, but it does not delete any PVCs (nor PVs)
+    spec:                       # StatefulSets create PVCs by using volume ClaimTemplates on the fly during Pod creation
+      volumeMode: Filesystem
+      storageClassName: nfs
+      accessModes:
+        - ReadWriteOnce
+      resources:
+        requests:
+          storage: 1Gi
+

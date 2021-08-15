@@ -1,0 +1,60 @@
+
+# See Kubectl context and configuration
+kubectl config view
+kubectl config view -o jsonpath='{.users[*].name}'   # display list of contexts 
+kubectl config get-contexts                          # display list of contexts 
+kubectl config current-context                       # display the current-context
+kubectl config use-context my-cluster-name           # set the default context to my-cluster-name
+
+# Add a new user to your kubeconf that supports basic auth
+kubectl config set-credentials kubeuser/foo.kubernetes.com --username=kubeuser --password=kubepassword
+
+# Delete user
+kubectl config unset users.foo                       # delete user foo
+
+# Start a pod
+kubectl run NAME --image=image [--env="key=value"] [--port=port] [--dry-run=server|client] [--overrides=inline-json] [--command] -- [COMMAND] [args...]
+
+# Start a pod for testing pod networking
+kubectl run -it --rm --image busybox:latest dns-test-pod --restart=Never --image-pull-policy=IfNotPresent
+kubectl run -it --rm --image tutum/dnsutils:latest dns-test-pod --restart=Never --image-pull-policy=IfNotPresent
+  nslookup pod_name
+  nslookup service_name
+  ping pod_name          # service IP is virtual, not pingable
+  ping pod_ip
+  cat /etc/resolv.conf
+  dig default.svc.cluster.local
+
+# Show pods with IP info and services with CLUSTER-IP info
+kubectl get all -o wide
+
+# Check endpoints
+kubectl get ep kube-dns --namespace=kube-system
+kubectl describe ep kube-dns --namespace=kube-system
+kubectl get ep -A
+
+# Output in yaml format 
+kubectl get pod_name -o yaml
+
+# Log onto a pod
+kubectl exec -it pod_name -- sh
+
+# Port          Process         Description
+4149/TCP        kubelet         Default cAdvisor port used to query container metrics
+10250/TCP       kubelet         API which allows full node access
+10255/TCP       kubelet         Unauthenticated read-only port, allowing access to node state
+10256/TCP       kube-proxy      Health check server for Kube Proxy
+9099/TCP        calico-felix    Health check server for Calico (if using Calico/Canal)
+6443/TCP        kube-apiserver  Kubernetes API port
+
+iptables -I INPUT -p tcp --dport 6443 -j ACCEPT
+iptables -I INPUT -p tcp --dport 10250 -j ACCEPT
+iptables -I INPUT -p tcp --dport 10256 -j ACCEPT
+iptables -I INPUT -p tcp --dport 53 -j ACCEPT
+iptables -I INPUT -p tcp --dport 9153 -j ACCEPT
+iptables -I INPUT -p tcp --dport 443 -j ACCEPT
+
+# Flannel uses UDP port 8285 and 8472
+iptables -I INPUT -p udp --dport 8285 -j ACCEPT
+iptables -I INPUT -p udp --dport 8472 -j ACCEPT
+

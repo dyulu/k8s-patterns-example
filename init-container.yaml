@@ -1,0 +1,67 @@
+# kubectl apply -f init-container.yaml
+#
+# kubectl get all
+#     NAME      READY   STATUS    RESTARTS   AGE
+#     pod/www   1/1     Running   0          14m
+#
+#     NAME                 TYPE        CLUSTER-IP     EXTERNAL-IP   PORT(S)          AGE
+#     service/www          NodePort    10.96.203.31   <none>        8080:32505/TCP   14m
+#
+# curl http://10.96.203.31:8080/README.md
+# curl http://localhost:32505/README.md
+#
+# kubectl exec --stdin --tty www -- /bin/bash
+#     ls /var/www/html
+#
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: www
+  labels:
+    app: www
+spec:
+  initContainers:
+  - name: download
+    image: alpine/git
+    imagePullPolicy: IfNotPresent
+    # Clone an HTML page to be served
+    command:
+    - git
+    - clone
+    - https://github.com/dyulu/k8s_cr_example.git
+    - /var/lib/data
+    # Shared volume with main container
+    volumeMounts:
+    - mountPath: /var/lib/data
+      name: source
+  containers:
+  # Simple static HTTP server for serving these pages
+  - name: run
+    image: docker.io/centos/httpd
+    imagePullPolicy: IfNotPresent
+    ports:
+    - containerPort: 80
+    # Shared volume with main container
+    volumeMounts:
+    - mountPath: /var/www/html
+      name: source
+  volumes:
+  - emptyDir: {}
+    name: source
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: www
+spec:
+  selector:
+    app: www
+  ports:
+  - name: http
+    port: 8080
+    protocol: TCP
+    targetPort: 80
+  type: NodePort
+

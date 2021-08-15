@@ -1,0 +1,57 @@
+#
+# kubectl get pod -w      # --watch
+#   NAME              READY   STATUS    RESTARTS   AGE
+#   batch-job-rwdsb   0/1     Pending   0          0s
+#   batch-job-rwdsb   0/1     Pending   0          0s
+#   batch-job-pvn6m   0/1     Pending   0          0s
+#   batch-job-pvn6m   0/1     Pending   0          0s
+#   batch-job-rwdsb   0/1     ContainerCreating   0          0s
+#   batch-job-pvn6m   0/1     ContainerCreating   0          0s
+#   batch-job-pvn6m   1/1     Running             0          2s
+#   batch-job-rwdsb   1/1     Running             0          7s
+#   batch-job-pvn6m   0/1     Completed           0          7s
+#   batch-job-xfpvr   0/1     Pending             0          0s
+#   batch-job-xfpvr   0/1     Pending             0          0s
+#   batch-job-xfpvr   0/1     ContainerCreating   0          0s
+#   batch-job-xfpvr   1/1     Running             0          2s
+#   batch-job-rwdsb   0/1     Completed           0          12s
+#   batch-job-fb828   0/1     Pending             0          0s
+#   batch-job-fb828   0/1     Pending             0          0s
+#   batch-job-fb828   0/1     ContainerCreating   0          0s
+#   batch-job-fb828   1/1     Running             0          3s
+#   batch-job-xfpvr   0/1     Completed           0          9s
+#   batch-job-fb828   0/1     Completed           0          8s
+#   
+#  kubectl get all
+#   NAME              READY   STATUS      RESTARTS   AGE
+#   batch-job-fb828   0/1     Completed   0          4m2s
+#   batch-job-pvn6m   0/1     Completed   0          4m14s
+#   batch-job-rwdsb   0/1     Completed   0          4m14s
+#   batch-job-xfpvr   0/1     Completed   0          4m7s
+#
+#   NAME                  COMPLETIONS   DURATION   AGE
+#   job.batch/batch-job   4/4           16s        4m14s
+#
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: batch-job
+spec:
+  template:
+    spec:
+      containers:
+      - name: batch-job
+        image: alpine
+        imagePullPolicy: IfNotPresent
+
+        command: ['sh', '-c', 'echo Job Pod is Running ...; sleep 5']
+
+      restartPolicy: Never
+      terminationGracePeriodSeconds: 0
+
+  backoffLimit: 2    # number of retries before a Job is marked as failed
+  completions: 4     # how many pods must successfully complete for job to be considered complete
+  parallelism: 2     # how many pods to run  simultaneously
+  activeDeadlineSeconds: 30  # all pods are terminated once execution reaches the deadline
+

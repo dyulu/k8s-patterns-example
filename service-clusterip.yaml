@@ -1,0 +1,86 @@
+
+#
+# $ kubectl get all -o wide
+#   NAME                       READY   STATUS    RESTARTS   AGE     IP            NODE          NOMINATED NODE   READINESS GATES
+#   pod/web-85bc788f78-4rqn5   1/1     Running   0          5m31s   10.100.0.23   my-worker-1   <none>           <none>
+#   pod/web-85bc788f78-bxlrq   1/1     Running   0          5m31s   10.100.0.66   my-worker-2   <none>           <none>
+#   pod/web-85bc788f78-cl9fx   1/1     Running   0          5m31s   10.100.0.65   my-worker-2   <none>           <none>
+#   pod/web-85bc788f78-qh9m2   1/1     Running   0          5m31s   10.100.0.67   my-worker-2   <none>           <none>
+#   
+#   NAME                 TYPE        CLUSTER-IP      EXTERNAL-IP   PORT(S)    AGE     SELECTOR
+#   service/web          ClusterIP   10.96.111.155   <none>        8080/TCP   5m31s   app=web
+#   
+#   NAME                  READY   UP-TO-DATE   AVAILABLE   AGE     CONTAINERS   IMAGES         SELECTOR
+#   deployment.apps/web   4/4     4            4           5m32s   web          nginx:latest   app=web
+#   
+#   NAME                             DESIRED   CURRENT   READY   AGE     CONTAINERS   IMAGES         SELECTOR
+#   replicaset.apps/web-85bc788f78   4         4         4       5m32s   web          nginx:latest   app=web,pod-template-hash=85bc788f78
+#   
+# $ kubectl get ep
+#   NAME         ENDPOINTS                                                  AGE
+#   web          10.100.0.23:80,10.100.0.65:80,10.100.0.66:80 + 1 more...   11m
+#
+# $ kubectl exec -it pod/web-85bc788f78-4rqn5 -- sh
+#   # curl http://10.96.111.155:8080                 # ClusterIP works when on the k8s cluster
+#   # curl http://10.100.0.23:80                     # localhost:80 works
+#   # curl http://10.100.0.65:80                     # may not work depending on networking settings; the pod is on another node
+#   # env
+#   KUBERNETES_PORT=tcp://10.96.0.1:443
+#   KUBERNETES_SERVICE_PORT=443
+#   WEB_PORT_8080_TCP_PORT=8080
+#   WEB_PORT_8080_TCP_PROTO=tcp
+#   HOSTNAME=web-85bc788f78-4rqn5
+#   WEB_PORT=tcp://10.96.111.155:8080
+#   WEB_SERVICE_PORT=8080                         <== Service-related environment variables
+#   HOME=/root
+#   PKG_RELEASE=1~buster
+#   WEB_PORT_8080_TCP=tcp://10.96.111.155:8080
+#   TERM=xterm
+#   KUBERNETES_PORT_443_TCP_ADDR=10.96.0.1
+#   NGINX_VERSION=1.21.1
+#   PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+#   KUBERNETES_PORT_443_TCP_PORT=443
+#   NJS_VERSION=0.6.1
+#   KUBERNETES_PORT_443_TCP_PROTO=tcp
+#   KUBERNETES_PORT_443_TCP=tcp://10.96.0.1:443
+#   KUBERNETES_SERVICE_PORT_HTTPS=443
+#   KUBERNETES_SERVICE_HOST=10.96.0.1
+#   PWD=/
+#   WEB_PORT_8080_TCP_ADDR=10.96.111.155
+#   WEB_SERVICE_HOST=10.96.111.155                  <== Service-related environment variables
+#
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: web
+spec:
+  replicas: 4
+  selector:
+    matchLabels:
+      app: web
+  template:
+    metadata:
+      labels:
+        app: web
+    spec:
+      containers:
+      - image: nginx:latest
+        name: web
+        ports:
+        - containerPort: 80       # nginx service port
+          protocol: TCP
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: web
+spec:
+  selector:                 # Default type: ClusterIP; accessible only from within the Kubernetes cluster
+    app: web                # Selector matching Pod labels
+  ports:
+  - port: 8080              # Port over which this Service can be contacted
+    protocol: TCP
+    targetPort: 80          # Port on which the Pods are listening
