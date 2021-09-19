@@ -6,11 +6,11 @@
 # The exact way that load-balancer provisioning is performed and service discovery vary among cloud providers.
 
 # $ kubectl get all -o wide
-#   NAME                       READY   STATUS    RESTARTS   AGE   IP            NODE            NOMINATED NODE   READINESS GATES
-#   pod/web-85bc788f78-5nzck   1/1     Running   0          47s   10.100.0.73   nlabict061526   <none>           <none>
-#   pod/web-85bc788f78-b2p4p   1/1     Running   0          47s   10.100.0.25   nlabict061525   <none>           <none>
-#   pod/web-85bc788f78-hl8k7   1/1     Running   0          47s   10.100.0.74   nlabict061526   <none>           <none>
-#   pod/web-85bc788f78-m7z6z   1/1     Running   0          47s   10.100.0.72   nlabict061526   <none>           <none>
+#   NAME                       READY   STATUS    RESTARTS   AGE   IP            NODE          NOMINATED NODE   READINESS GATES
+#   pod/web-85bc788f78-5nzck   1/1     Running   0          47s   10.100.0.73   my-worker-2   <none>           <none>
+#   pod/web-85bc788f78-b2p4p   1/1     Running   0          47s   10.100.0.25   my-worker-1   <none>           <none>
+#   pod/web-85bc788f78-hl8k7   1/1     Running   0          47s   10.100.0.74   my-worker-2   <none>           <none>
+#   pod/web-85bc788f78-m7z6z   1/1     Running   0          47s   10.100.0.72   my-worker-2   <none>           <none>
 #   
 #   NAME                 TYPE           CLUSTER-IP       EXTERNAL-IP   PORT(S)          AGE     SELECTOR
 #   service/web          LoadBalancer   10.106.108.140   <pending>     8080:30411/TCP   47s     app=web

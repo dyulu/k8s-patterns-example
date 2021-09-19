@@ -1,0 +1,85 @@
+
+
+==== Single Node Elasticsearch Cluster
+https://chekkan.com/setting-up-elasticsearch-cluster-on-kubernetes-part-1/
+
+# Create pod/elasticsearch:
+#   TransportService: publish_address {10.244.0.5:9300}, bound_addresses {0.0.0.0:9300}
+#   SecurityNetty4HttpServerTransport: publish_address {10.244.0.5:9200}, bound_addresses {0.0.0.0:9200}
+kubectl run elasticsearch --image=docker.elastic.co/elasticsearch/elasticsearch:6.2.1 --env="discovery.type=single-node" --port=9200
+
+# Expose the cluster
+kubectl proxy         # Starting to serve on 127.0.0.1:8001
+
+
+# Get the response from the pod via the proxy
+http://localhost:8001/api/v1/namespaces/$NAMESPACE_NAME/pods/$POD_NAME/proxy/
+$ curl http://localhost:8001/api/v1/namespaces/default/pods/elasticsearch/proxy/
+{
+  "name" : "8TLCd4J",
+  "cluster_name" : "docker-cluster",
+  "cluster_uuid" : "Q43iK_8MQKm3a-0Q9f5tuw",
+  "version" : {
+    "number" : "6.2.1",
+    "build_hash" : "7299dc3",
+    "build_date" : "2018-02-07T19:34:26.990113Z",
+    "build_snapshot" : false,
+    "lucene_version" : "7.2.1",
+    "minimum_wire_compatibility_version" : "5.6.0",
+    "minimum_index_compatibility_version" : "5.0.0"
+  },
+  "tagline" : "You Know, for Search"
+}
+
+# Expose the pod to outside of Kubernetes network
+$ kubectl expose pod elasticsearch --type=LoadBalancer
+service/elasticsearch exposed
+$ kubectl get all
+NAME                READY   STATUS    RESTARTS   AGE
+pod/elasticsearch   1/1     Running   0          2m
+
+NAME                    TYPE           CLUSTER-IP       EXTERNAL-IP   PORT(S)          AGE
+service/elasticsearch   LoadBalancer   10.106.139.113   <pending>     9200:32402/TCP   64s
+$ curl http://localhost:32402
+{
+  "name" : "8TLCd4J",
+  "cluster_name" : "docker-cluster",
+  "cluster_uuid" : "Q43iK_8MQKm3a-0Q9f5tuw",
+  "version" : {
+    "number" : "6.2.1",
+    "build_hash" : "7299dc3",
+    "build_date" : "2018-02-07T19:34:26.990113Z",
+    "build_snapshot" : false,
+    "lucene_version" : "7.2.1",
+    "minimum_wire_compatibility_version" : "5.6.0",
+    "minimum_index_compatibility_version" : "5.0.0"
+  },
+  "tagline" : "You Know, for Search"
+}
+
+==== Fluentbit
+
+Fluentbit is great for log collection, processing, and forwarding — but not for log aggregation.
+
+https://raw.githubusercontent.com/fluent/fluent-bit-kubernetes-logging/master/fluent-bit-service-account.yaml
+https://raw.githubusercontent.com/fluent/fluent-bit-kubernetes-logging/master/fluent-bit-role.yaml
+https://raw.githubusercontent.com/fluent/fluent-bit-kubernetes-logging/master/fluent-bit-role-binding.yaml
+https://raw.githubusercontent.com/fluent/fluent-bit-kubernetes-logging/master/output/elasticsearch/fluent-bit-configmap.yaml
+https://raw.githubusercontent.com/fluent/fluent-bit-kubernetes-logging/master/output/elasticsearch/fluent-bit-ds.yaml
+
+fluent-bit-configmap.yaml:
+    input-kubernetes.conf
+        Path /var/log/containers/*.log
+
+fluent-bit-ds.yaml:
+    hostPath:  /var/log                      mountPath: /var/log
+    hostPath:  /var/lib/docker/containers    mountPath: /var/lib/docker/containers   readOnly: true
+    configMap: fluent-bit-config             mountPath: /fluent-bit/etc/
+
+Container logs are stored at:
+    /var/lib/docker/containers/<container_id>/<container_id>-json.log
+
+The symlink /var/log/containers created by Kubernetes is for /var/lib/docker/containers prior to docker 1.12.5.
+In 1.12.6 the path /var/lib/docker/container is replace by /var/log/pods/UID.../*logs, which is symlinked to /var/lib/docker/containers.
+
+

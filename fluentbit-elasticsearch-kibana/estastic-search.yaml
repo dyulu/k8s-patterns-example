@@ -1,0 +1,127 @@
+
+#
+# Create predictable load on the logs delivery system: the following will generate 1000 log entries in 1 minute
+#   docker run -i -e "LOGS_GENERATOR_LINES_TOTAL=1000" -e "LOGS_GENERATOR_DURATION=1m" k8s.gcr.io/logs-generator:v0.1.1
+#   kubectl run logs-generator --image=k8s.gcr.io/logs-generator:v0.1.1 --restart=Never --env "LOGS_GENERATOR_LINES_TOTAL=1000" --env "LOGS_GENERATOR_DURATION=1m"
+#
+# Use fluent-bit to send logs to elastic-search
+#
+# https://chekkan.com/setting-up-elasticsearch-cluster-on-kubernetes-part-3-config-file/
+# 
+# $ kubectl get all -n logging
+#   NAME                                 READY   STATUS    RESTARTS   AGE
+#   pod/elasticsearch-7c5d5486b8-t428m   1/1     Running   0          56s
+#   
+#   NAME                    TYPE           CLUSTER-IP     EXTERNAL-IP   PORT(S)          AGE
+#   service/elasticsearch   LoadBalancer   10.105.187.4   <pending>     9200:32243/TCP   56s
+#   
+#   NAME                            READY   UP-TO-DATE   AVAILABLE   AGE
+#   deployment.apps/elasticsearch   1/1     1            1           56s
+#   
+#   NAME                                       DESIRED   CURRENT   READY   AGE
+#   replicaset.apps/elasticsearch-7c5d5486b8   1         1         1       56s
+#
+# $ curl "http://localhost:32243"
+#   {
+#     "name" : "elasticsearch-7c5d5486b8-t428m",
+#     "cluster_name" : "docker-cluster",
+#     "cluster_uuid" : "206w-kRfQKOPDjQ6n2ffMg",
+#     "version" : {
+#       "number" : "7.14.0",
+#       "build_flavor" : "default",
+#       "build_type" : "docker",
+#       "build_hash" : "dd5a0a2acaa2045ff9624f3729fc8a6f40835aa1",
+#       "build_date" : "2021-07-29T20:49:32.864135063Z",
+#       "build_snapshot" : false,
+#       "lucene_version" : "8.9.0",
+#       "minimum_wire_compatibility_version" : "6.8.0",
+#       "minimum_index_compatibility_version" : "6.0.0-beta1"
+#     },
+#     "tagline" : "You Know, for Search"
+#   }
+#
+# $ curl "http://localhost:32243/_cat/nodes?v=true&pretty"
+#   ip         heap.percent ram.percent cpu load_1m load_5m load_15m node.role   master name
+#   10.244.0.7           10          57  31    2.56    1.61     0.90 cdfhilmrstw *      elasticsearch-7c5d5486b8-t428m
+#
+# $ curl -XGET 'localhost:32243/_cat/indices?v&pretty'
+#   health status index               uuid                   pri rep docs.count docs.deleted store.size pri.store.size
+#   green  open   .geoip_databases    3YYskFioSpaX_S_ONrhaGw   1   0         42            0     40.8mb         40.8mb
+#   yellow open   logstash-2021.08.22 rj0wvupERPWtJTQGH5a7Lw   1   1        774            0    586.2kb        586.2kb
+#
+# $ watch curl -XGET 'localhost:32243/_cat/indices?v&pretty'  # while performing: kubectl apply -f fluent-bit.yaml 
+#
+# Get the last 10 documents: sort by descending timestamp
+# $ curl -H 'Content-Type: application/json' 'http://localhost:32243/logstash-*/_search?pretty' \
+#        -XPOST \
+#        -d '
+#            {
+#               "size": 10,
+#               "sort": { "@timestamp": "desc"},
+#               "query": {
+#                  "match_all": {}
+#               }
+#           }'
+#
+# $ curl -X GET "localhost:32243/_search?pretty" -H 'Content-Type: application/json' -d'
+#   {
+#       "query": {
+#           "match_all": {}
+#       }
+#   }
+#   '
+#
+# $ kubectl exec -it pod/elasticsearch-7c5d5486b8-t428m -n logging -- bash
+#   $ cat /usr/share/elasticsearch/config/elasticsearch.yml
+#   cluster.name: "docker-cluster"
+#   network.host: 0.0.0.0
+#
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: logging
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: elasticsearch
+  namespace: logging
+spec:
+  selector:
+    matchLabels:
+      component: elasticsearch
+  template:
+    metadata:
+      labels:
+        component: elasticsearch
+    spec:
+      containers:
+        - name: elasticsearch
+          image: docker.elastic.co/elasticsearch/elasticsearch:7.14.0
+          env:
+            - name: discovery.type
+              value: single-node
+          ports:
+            - containerPort: 9200
+              name: http
+              protocol: TCP
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: elasticsearch
+  namespace: logging
+  labels:
+    component: elasticsearch
+spec:
+  type: LoadBalancer
+  selector:
+    component: elasticsearch
+  ports:
+    - name: http
+      port: 9200
+      protocol: TCP
+

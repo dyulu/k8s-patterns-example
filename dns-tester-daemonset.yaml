@@ -1,0 +1,76 @@
+
+# 
+# List taints for all nodes:
+#     kubectl get nodes -o json | jq ".items[] | {name:.metadata.name, taints:.spec.taints}"
+#
+# Add a taint to node1. The taint has key key1, value value1, and taint effect NoSchedule. 
+# This means that no pod will be able to schedule onto node1 unless it has a matching toleration.
+#     kubectl taint nodes node1 key1=value1:NoSchedule
+# To remove the above-added taint:
+#     kubectl taint nodes node1 key1=value1:NoSchedule-
+#
+# A pod can specify toleration in pod spec.
+# To match the above-added taint, do either of the following:
+#     tolerations:
+#     - key: "key1"
+#       operator: "Equal"
+#       value: "value1"
+#       effect: "NoSchedule"
+#
+#     tolerations:
+#     - key: "key1"
+#       operator: "Exists"
+#       effect: "NoSchedule"
+#
+# Remove node-role.kubernetes.io/master:NoSchedule taint: 
+#     kubectl taint nodes $(hostname) node-role.kubernetes.io/master=:NoSchedule-
+#
+# exec -it pod/dns-tester-daemonset-xxxxx -- bash
+#    cat /etc/resolv.conf
+#    ip addr
+#    ifconfig
+#    ip route
+#    ip route list
+#    ping
+#    netstat -rn   # --route: display routing table; --numeric don not resolve host/port/user names
+#    netstat -tulpn | grep LISTEN   # Check if port is in use: --tcp, --udp, --listening, --programs
+#    ss -tulwnp | grep LISTEN       # For latest Linux, -w Raw socket
+#    nslookup                       # your-svc.your-namespace.svc.cluster.local
+#                                   # pod-ip-address.your-namespace.pod.cluster.local; pod ip 10.244.0.6 in default: 10-244-0-6.default.pod.cluster.local
+#                                   # pod-custom-host.pod-custom-subdomain.your-namespace.svc.cluster.local
+#    dig default.svc.cluster.local
+#    cat /run/flannel/subnet.env    # on nodes
+#    #### The following would show DNS is working
+#    $ nslookup kubernetes.default
+#      Server:		10.96.0.10
+#      Address:	10.96.0.10#53
+#      
+#      Name:	kubernetes.default.svc.cluster.local
+#      Address: 10.96.0.1
+#
+
+---
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: dns-tester-daemonset
+spec:
+  selector:
+    matchLabels:
+      app: dns-tester-daemonset
+  template:
+    metadata:
+      labels:
+        app: dns-tester-daemonset
+    spec:
+      # Also run on the the master even it's tainted
+      tolerations:
+      - key: node-role.kubernetes.io/master   # Empty key with operator Exists matches all keys, values and effects; tolerate everything
+        operator: Exists
+        effect: "NoSchedule"                  # Empty effect matches all effects with the specified key
+      containers:
+      - name: dns-tester
+        image: tutum/dnsutils:latest        # busybox:latest
+        imagePullPolicy: IfNotPresent
+        command: ["sleep", "3600"]
+

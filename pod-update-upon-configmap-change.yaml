@@ -1,0 +1,56 @@
+
+---
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: configmap-demo
+  labels:
+    app: configmap-demo-app
+spec:
+  selector:
+    matchLabels:
+      app: configmap-demo-app
+  template:
+    metadata:
+      labels:
+        app: configmap-demo-app
+      annotations:
+        # This field is used to couple the pod with the ConfigMap it depends on.
+        # The following process should be automated:
+        # When ConfigMap changes, regenerate the field, e.g.,  with:
+        #   yq w pod-update-upon-configmap-change.yaml spec.template.metadata.annotations.configHash $(kubectl get cm/game-demo -oyaml | sha256sum)
+        # Then, reapply the daemonset. The pod will be updated since the spec has changed due to the configHash change.
+        # Verify it by running env on the pod.
+        # configHash: 658eb38f6a6ddfcb58bc76635d19e94d9c107ba9596c6ba59198f85d49ddcb1f      # player_initial_lives: "5"
+        configHash: acc8ee9b7b39f634acfa7bb15dc462edaa2245bb77497408f5c4b1b2056c40f7      # player_initial_lives: "3"
+    spec:
+      containers:
+      - name: demo
+        image: alpine
+        imagePullPolicy: IfNotPresent
+        command: ["sleep", "3600"]
+        env:
+        # Define the environment variable
+        - name: PLAYER_INITIAL_LIVES # Notice that the case is different here
+                                     # from the key name in the ConfigMap.
+          valueFrom:
+            configMapKeyRef:
+              name: game-demo           # The ConfigMap this value comes from.
+              key: player_initial_lives # The key to fetch.
+        - name: UI_PROPERTIES_FILE_NAME
+          valueFrom:
+            configMapKeyRef:
+              name: game-demo
+              key: ui_properties_file_name
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: game-demo
+data:
+  # property-like keys; each key maps to a simple value
+  player_initial_lives: "5"
+  # player_initial_lives: "3"
+  ui_properties_file_name: "user-interface.properties"
+

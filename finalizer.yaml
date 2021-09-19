@@ -1,0 +1,57 @@
+
+#
+# https://kubernetes.io/blog/2021/05/14/using-finalizers-to-control-deletion/
+#
+# $ kubectl get configmap/mymap -oyaml
+#   apiVersion: v1
+#   kind: ConfigMap
+#   metadata:
+#     annotations:
+#       kubectl.kubernetes.io/last-applied-configuration: |
+#         {"apiVersion":"v1","kind":"ConfigMap","metadata":{"annotations":{},"finalizers":["kubernetes"],"name":"mymap","namespace":"default"}}
+#     creationTimestamp: "2021-08-22T21:52:11Z"
+#     finalizers:
+#     - kubernetes
+#     name: mymap
+#     namespace: default
+#     resourceVersion: "846719"
+#     uid: 3315a158-e75c-4204-a77e-123b1e1019c3
+#
+# $  kubectl delete configmap/mymap &
+#   [1] 1077019
+#   configmap "mymap" deleted
+# $ ps -ef | grep kubectl
+#   root     1077019 1076089  0 17:54 pts/1    00:00:00 kubectl delete configmap/mymap      # The deletion is still running in the background
+#   root     1077298 1076089  0 17:54 pts/1    00:00:00 grep --color=auto kubectl
+# $  kubectl get configmap/mymap -oyaml
+#   apiVersion: v1
+#   kind: ConfigMap
+#   metadata:
+#     annotations:
+#       kubectl.kubernetes.io/last-applied-configuration: |
+#         {"apiVersion":"v1","kind":"ConfigMap","metadata":{"annotations":{},"finalizers":["kubernetes"],"name":"mymap","namespace":"default"}}
+#     creationTimestamp: "2021-08-22T21:52:11Z"
+#     deletionGracePeriodSeconds: 0
+#     deletionTimestamp: "2021-08-22T21:54:01Z"                                              # The config map was updated with deletion timestamp
+#     finalizers:
+#     - kubernetes
+#     name: mymap
+#     namespace: default
+#     resourceVersion: "846851"
+#     uid: 3315a158-e75c-4204-a77e-123b1e1019c3
+# $ kubectl patch configmap/mymap --type json --patch='[ { "op": "remove", "path": "/metadata/finalizers" } ]'
+#   configmap/mymap patched                                                                  # Remove the finalizer would allow deletion to complete
+#   [1]+  Done                    kubectl delete configmap/mymap
+# kubectl get configmap/mymap -oyaml
+#   Error from server (NotFound): configmaps "mymap" not found
+#
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: mymap
+  finalizers:
+  - kubernetes     # ConfigMap resource controller doesn't understand what to do with the kubernetes finalizer key.
+    # The resource controller could be written to add the finalizer if deletionTimestamp is not set,
+    #   and otherwise, would clean up things and remove the finalizer to complete the deletion

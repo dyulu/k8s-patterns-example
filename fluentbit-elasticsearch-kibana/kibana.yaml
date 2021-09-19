@@ -1,0 +1,118 @@
+
+#
+# https://chekkan.com/setting-up-elasticsearch-cluster-on-kubernetes-part-3-config-file/
+#
+# $ kubectl apply -f estastic-search.yaml 
+# $ kubectl apply -f fluent-bit.yaml
+# $ kubectl apply -f kibana.yaml 
+#
+# $ kubectl get all -n logging
+#   NAME                                 READY   STATUS    RESTARTS   AGE
+#   pod/elasticsearch-7c5d5486b8-dmbw6   1/1     Running   0          20m
+#   pod/fluent-bit-gr265                 1/1     Running   0          9m34s
+#   pod/kibana-68c9b547f6-fs2s8          1/1     Running   0          13s
+#   
+#   NAME                    TYPE           CLUSTER-IP      EXTERNAL-IP   PORT(S)          AGE
+#   service/elasticsearch   LoadBalancer   10.110.221.12   <pending>     9200:32434/TCP   20m
+#   service/kibana          LoadBalancer   10.111.201.55   <pending>     5601:31315/TCP   13s
+#   
+#   NAME                        DESIRED   CURRENT   READY   UP-TO-DATE   AVAILABLE   NODE SELECTOR   AGE
+#   daemonset.apps/fluent-bit   1         1         1       1            1           <none>          9m34s
+#   
+#   NAME                            READY   UP-TO-DATE   AVAILABLE   AGE
+#   deployment.apps/elasticsearch   1/1     1            1           20m
+#   deployment.apps/kibana          1/1     1            1           14s
+#   
+#   NAME                                       DESIRED   CURRENT   READY   AGE
+#   replicaset.apps/elasticsearch-7c5d5486b8   1         1         1       20m
+#   replicaset.apps/kibana-68c9b547f6          1         1         1       13s
+#
+# $ curl http://localhost:32434         # elastic search
+# $ kubectl exec -it pod/kibana-68c9b547f6-fs2s8 -n logging -- bash
+#   $ cat /usr/share/kibana/config/kibana.yml 
+#   #
+#   # ** THIS IS AN AUTO-GENERATED FILE **
+#   #
+#   
+#   # Default Kibana configuration for docker target
+#   server.host: "0"
+#   server.shutdownTimeout: "5s"
+#   elasticsearch.hosts: [ "http://elasticsearch:9200" ]
+#   monitoring.ui.container.elasticsearch.enabled: true
+#
+#   $ curl http://elasticsearch:9200
+#   {
+#     "name" : "elasticsearch-7c5d5486b8-dmbw6",
+#     "cluster_name" : "docker-cluster",
+#     "cluster_uuid" : "32q2lDTvScGdEyGSIUiyVw",
+#     "version" : {
+#       "number" : "7.14.0",
+#       "build_flavor" : "default",
+#       "build_type" : "docker",
+#       "build_hash" : "dd5a0a2acaa2045ff9624f3729fc8a6f40835aa1",
+#       "build_date" : "2021-07-29T20:49:32.864135063Z",
+#       "build_snapshot" : false,
+#       "lucene_version" : "8.9.0",
+#       "minimum_wire_compatibility_version" : "6.8.0",
+#       "minimum_index_compatibility_version" : "6.0.0-beta1"
+#     },
+#     "tagline" : "You Know, for Search"
+#   }
+#
+# https://www.youtube.com/watch?v=DVgKDPf7hOU     # Getting Started with Kibana 
+#
+# $ http://localhost:31315              # kibana UI
+# Management => Kibana => Index Patterns
+# Management => Dev Tools               # Console
+#    GET /_cluster/health
+#    GET /_cluster/stats
+#    GET /_cat/indices
+#    GET /_cat/count
+# Analytics => Discover                 # KQL, time range
+# Analytics => Visualize Library => Create new visualization => Aggregation based => Pie
+# Analytics => Dashboard
+#
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kibana
+  namespace: logging
+spec:
+  selector:
+    matchLabels:
+      run: kibana
+  template:
+    metadata:
+      labels:
+        run: kibana
+    spec:
+      containers:
+        - name: kibana
+          image: docker.elastic.co/kibana/kibana:7.14.0
+          env:
+            - name: ELASTICSEARCH_URL
+              value: "http://elasticsearch:9200"
+            - name: XPACK_SECURITY_ENABLED
+              value: "true"                    # Need to be quoted
+          ports:
+            - containerPort: 5601
+              name: http
+              protocol: TCP
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: kibana
+  namespace: logging
+  labels:
+    run: kibana
+spec:
+  type: LoadBalancer
+  selector:
+    run: kibana
+  ports:
+    - name: http
+      port: 5601
+      protocol: TCP

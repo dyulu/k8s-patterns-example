@@ -1,0 +1,256 @@
+
+https://docs.fluentbit.io/manual/installation/linux/ubuntu#ubuntu-20-04-lts-focal-fossa
+https://docs.fluentbit.io/manual/administration/configuring-fluent-bit
+https://docs.fluentbit.io/manual/pipeline/inputs
+
+
+==== Install on Ubuntu 20.04:
+wget -qO - https://packages.fluentbit.io/fluentbit.key | sudo apt-key add -
+echo "deb https://packages.fluentbit.io/ubuntu/focal focal main" >> /etc/apt/sources.list
+apt-get update
+apt-get install td-agent-bit
+systemctl start td-agent-bit     # service td-agent-bit start
+
+====
+# Systemd service
+$ cat /lib/systemd/system/td-agent-bit.service
+[Unit]
+Description=TD Agent Bit
+Requires=network.target
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=/opt/td-agent-bit/bin/td-agent-bit -c /etc/td-agent-bit/td-agent-bit.conf
+Restart=always
+
+[Install]
+WantedBy=multi-user.target
+
+# Configuration file
+$ ls /etc/td-agent-bit/                 
+parsers.conf  plugins.conf  td-agent-bit.conf
+$ cat /etc/td-agent-bit/td-agent-bit.conf
+[SERVICE]
+    # Flush
+    # =====
+    # set an interval of seconds before to flush records to a destination
+    flush        5
+
+    # Daemon
+    # ======
+    # instruct Fluent Bit to run in foreground or background mode.
+    daemon       Off
+
+    # Log_Level
+    # =========
+    # Set the verbosity level of the service, values can be:
+    #
+    # - error
+    # - warning
+    # - info
+    # - debug
+    # - trace
+    #
+    # by default 'info' is set, that means it includes 'error' and 'warning'.
+    log_level    info
+
+    # Parsers File
+    # ============
+    # specify an optional 'Parsers' configuration file
+    parsers_file parsers.conf
+
+    # Plugins File
+    # ============
+    # specify an optional 'Plugins' configuration file to load external plugins.
+    plugins_file plugins.conf
+
+    # HTTP Server
+    # ===========
+    # Enable/Disable the built-in HTTP Server for metrics
+    http_server  Off
+    http_listen  0.0.0.0
+    http_port    2020
+
+    # Storage
+    # =======
+    # Fluent Bit can use memory and filesystem buffering based mechanisms
+    #
+    # - https://docs.fluentbit.io/manual/administration/buffering-and-storage
+    #
+    # storage metrics
+    # ---------------
+    # publish storage pipeline metrics in '/api/v1/storage'. The metrics are
+    # exported only if the 'http_server' option is enabled.
+    #
+    storage.metrics on
+
+    # storage.path
+    # ------------
+    # absolute file system path to store filesystem data buffers (chunks).
+    #
+    # storage.path /tmp/storage
+
+    # storage.sync
+    # ------------
+    # configure the synchronization mode used to store the data into the
+    # filesystem. It can take the values normal or full.
+    #
+    # storage.sync normal
+
+    # storage.checksum
+    # ----------------
+    # enable the data integrity check when writing and reading data from the
+    # filesystem. The storage layer uses the CRC32 algorithm.
+    #
+    # storage.checksum off
+
+    # storage.backlog.mem_limit
+    # -------------------------
+    # if storage.path is set, Fluent Bit will look for data chunks that were
+    # not delivered and are still in the storage layer, these are called
+    # backlog data. This option configure a hint of maximum value of memory
+    # to use when processing these records.
+    #
+    # storage.backlog.mem_limit 5M
+
+[INPUT]
+    name cpu
+    tag  cpu.local
+
+    # Read interval (sec) Default: 1
+    interval_sec 1
+
+[OUTPUT]
+    name  stdout
+    match *
+
+#### The default configuration of td-agent-bit is collecting metrics of CPU usage and sending the records to the standard output.
+#### Check the outgoing data in /var/log/syslog since it is started as a systemd service.
+#### If you run "/opt/td-agent-bit/bin/td-agent-bit -c /etc/td-agent-bit/td-agent-bit.conf" from a terminal, you can see the outputs
+#### in from the terminal, 
+tail -f /var/log/syslog
+
+$ cat /etc/td-agent-bit/parsers.conf
+[PARSER]
+    Name   apache
+    Format regex
+    Regex  ^(?<host>[^ ]*) [^ ]* (?<user>[^ ]*) \[(?<time>[^\]]*)\] "(?<method>\S+)(?: +(?<path>[^\"]*?)(?: +\S*)?)?" (?<code>[^ ]*) (?<size>[^ ]*)(?: "(?<referer>[^\"]*)" "(?<agent>[^\"]*)")?$
+    Time_Key time
+    Time_Format %d/%b/%Y:%H:%M:%S %z
+
+[PARSER]
+    Name   apache2
+    Format regex
+    Regex  ^(?<host>[^ ]*) [^ ]* (?<user>[^ ]*) \[(?<time>[^\]]*)\] "(?<method>\S+)(?: +(?<path>[^ ]*) +\S*)?" (?<code>[^ ]*) (?<size>[^ ]*)(?: "(?<referer>[^\"]*)" "(?<agent>.*)")?$
+    Time_Key time
+    Time_Format %d/%b/%Y:%H:%M:%S %z
+
+[PARSER]
+    Name   apache_error
+    Format regex
+    Regex  ^\[[^ ]* (?<time>[^\]]*)\] \[(?<level>[^\]]*)\](?: \[pid (?<pid>[^\]]*)\])?( \[client (?<client>[^\]]*)\])? (?<message>.*)$
+
+[PARSER]
+    Name   nginx
+    Format regex
+    Regex ^(?<remote>[^ ]*) (?<host>[^ ]*) (?<user>[^ ]*) \[(?<time>[^\]]*)\] "(?<method>\S+)(?: +(?<path>[^\"]*?)(?: +\S*)?)?" (?<code>[^ ]*) (?<size>[^ ]*)(?: "(?<referer>[^\"]*)" "(?<agent>[^\"]*)")
+    Time_Key time
+    Time_Format %d/%b/%Y:%H:%M:%S %z
+
+[PARSER]
+    # https://rubular.com/r/IhIbCAIs7ImOkc
+    Name        k8s-nginx-ingress
+    Format      regex
+    Regex       ^(?<host>[^ ]*) - (?<user>[^ ]*) \[(?<time>[^\]]*)\] "(?<method>\S+)(?: +(?<path>[^\"]*?)(?: +\S*)?)?" (?<code>[^ ]*) (?<size>[^ ]*) "(?<referer>[^\"]*)" "(?<agent>[^\"]*)" (?<request_length>[^ ]*) (?<request_time>[^ ]*) \[(?<proxy_upstream_name>[^ ]*)\] (\[(?<proxy_alternative_upstream_name>[^ ]*)\] )?(?<upstream_addr>[^ ]*) (?<upstream_response_length>[^ ]*) (?<upstream_response_time>[^ ]*) (?<upstream_status>[^ ]*) (?<reg_id>[^ ]*).*$
+    Time_Key    time
+    Time_Format %d/%b/%Y:%H:%M:%S %z
+
+[PARSER]
+    Name   json
+    Format json
+    Time_Key time
+    Time_Format %d/%b/%Y:%H:%M:%S %z
+
+[PARSER]
+    Name         docker
+    Format       json
+    Time_Key     time
+    Time_Format  %Y-%m-%dT%H:%M:%S.%L
+    Time_Keep    On
+    # --
+    # Since Fluent Bit v1.2, if you are parsing Docker logs and using
+    # the Kubernetes filter, it's not longer required to decode the
+    # 'log' key.
+    #
+    # Command      |  Decoder | Field | Optional Action
+    # =============|==================|=================
+    #Decode_Field_As    json     log
+
+[PARSER]
+    Name        docker-daemon
+    Format      regex
+    Regex       time="(?<time>[^ ]*)" level=(?<level>[^ ]*) msg="(?<msg>[^ ].*)"
+    Time_Key    time
+    Time_Format %Y-%m-%dT%H:%M:%S.%L
+    Time_Keep   On
+
+[PARSER]
+    Name        syslog-rfc5424
+    Format      regex
+    Regex       ^\<(?<pri>[0-9]{1,5})\>1 (?<time>[^ ]+) (?<host>[^ ]+) (?<ident>[^ ]+) (?<pid>[-0-9]+) (?<msgid>[^ ]+) (?<extradata>(\[(.*?)\]|-)) (?<message>.+)$
+    Time_Key    time
+    Time_Format %Y-%m-%dT%H:%M:%S.%L%z
+    Time_Keep   On
+
+[PARSER]
+    Name        syslog-rfc3164-local
+    Format      regex
+    Regex       ^\<(?<pri>[0-9]+)\>(?<time>[^ ]* {1,2}[^ ]* [^ ]*) (?<ident>[a-zA-Z0-9_\/\.\-]*)(?:\[(?<pid>[0-9]+)\])?(?:[^\:]*\:)? *(?<message>.*)$
+    Time_Key    time
+    Time_Format %b %d %H:%M:%S
+    Time_Keep   On
+
+[PARSER]
+    Name        syslog-rfc3164
+    Format      regex
+    Regex       /^\<(?<pri>[0-9]+)\>(?<time>[^ ]* {1,2}[^ ]* [^ ]*) (?<host>[^ ]*) (?<ident>[a-zA-Z0-9_\/\.\-]*)(?:\[(?<pid>[0-9]+)\])?(?:[^\:]*\:)? *(?<message>.*)$/
+    Time_Key    time
+    Time_Format %b %d %H:%M:%S
+    Time_Keep   On
+
+[PARSER]
+    Name    mongodb
+    Format  regex
+    Regex   ^(?<time>[^ ]*)\s+(?<severity>\w)\s+(?<component>[^ ]+)\s+\[(?<context>[^\]]+)]\s+(?<message>.*?) *(?<ms>(\d+))?(:?ms)?$
+    Time_Format %Y-%m-%dT%H:%M:%S.%L
+    Time_Keep   On
+    Time_Key time
+
+[PARSER]
+    # https://rubular.com/r/3fVxCrE5iFiZim
+    Name    envoy
+    Format  regex
+    Regex ^\[(?<start_time>[^\]]*)\] "(?<method>\S+)(?: +(?<path>[^\"]*?)(?: +\S*)?)? (?<protocol>\S+)" (?<code>[^ ]*) (?<response_flags>[^ ]*) (?<bytes_received>[^ ]*) (?<bytes_sent>[^ ]*) (?<duration>[^ ]*) (?<x_envoy_upstream_service_time>[^ ]*) "(?<x_forwarded_for>[^ ]*)" "(?<user_agent>[^\"]*)" "(?<request_id>[^\"]*)" "(?<authority>[^ ]*)" "(?<upstream_host>[^ ]*)"  
+    Time_Format %Y-%m-%dT%H:%M:%S.%L%z
+    Time_Keep   On
+    Time_Key start_time
+
+[PARSER]
+    # http://rubular.com/r/tjUt3Awgg4
+    Name cri
+    Format regex
+    Regex ^(?<time>[^ ]+) (?<stream>stdout|stderr) (?<logtag>[^ ]*) (?<message>.*)$
+    Time_Key    time
+    Time_Format %Y-%m-%dT%H:%M:%S.%L%z
+
+[PARSER]
+    Name    kube-custom
+    Format  regex
+    Regex   (?<tag>[^.]+)?\.?(?<pod_name>[a-z0-9](?:[-a-z0-9]*[a-z0-9])?(?:\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*)_(?<namespace_name>[^_]+)_(?<container_name>.+)-(?<docker_id>[a-z0-9]{64})\.log$
+
+$ cat /etc/td-agent-bit/plugins.conf 
+[PLUGINS]
+    # Path /path/to/out_gstdout.so
+
+

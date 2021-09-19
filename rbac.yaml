@@ -1,0 +1,150 @@
+
+#
+# $ kubectl api-versions           # verify Role-based access control (RBAC) is enabled
+#   ......
+#   rbac.authorization.k8s.io/v1
+#   rbac.authorization.k8s.io/v1beta1
+#   ......
+#
+# When accessing k8s cluster outside the cluster using kubectl, apiserver authenticates using a particular
+# User Account, e.g., kubernetes-admin. 
+#
+# When processes in containers inside pods accessing apiserver, a particular Service Account is used.
+#
+# Pod is auto-assigned the default service account in the same namespace if a service account is not
+# specified at creation.
+#
+
+# kubectl config current-context                                     # comes from KUBECONFIG file
+# kubectl config get-contexts                                        # current user
+# kubectl config view --minify -o jsonpath='{.clusters[].name}'      # cluster name
+# kubectl auth can-i get pods --all-namespaces
+# kubectl auth can-i get pods -n ns-web
+# kubectl auth can-i create pods
+# kubectl auth can-i delete pods
+
+# $ kubectl get all -o wide -n ns-web
+#   NAME                      READY   STATUS    RESTARTS   AGE   IP             NODE          NOMINATED NODE   READINESS GATES
+#   pod/web-9df6dcfc6-2pfgr   1/1     Running   0          16s   10.100.0.107   my-worker-1   <none>           <none>
+#   pod/web-9df6dcfc6-xx5fv   1/1     Running   0          16s   10.100.0.44    my-worker-2   <none>           <none>
+#   
+#   NAME                  READY   UP-TO-DATE   AVAILABLE   AGE   CONTAINERS   IMAGES         SELECTOR
+#   deployment.apps/web   2/2     2            2           16s   web          nginx:latest   app=web
+#   
+#   NAME                            DESIRED   CURRENT   READY   AGE   CONTAINERS   IMAGES         SELECTOR
+#   replicaset.apps/web-9df6dcfc6   2         2         2       16s   web          nginx:latest   app=web,pod-template-hash=9df6dcfc6
+
+# $ kubectl get pod/web-9df6dcfc6-2pfgr -o yaml -n ns-web
+#   apiVersion: v1
+#   kind: Pod
+#   metadata:
+#   ......
+#     name: web-9df6dcfc6-2pfgr
+#     namespace: ns-web
+#   ......
+#   spec:
+#     containers:
+#     - image: nginx:latest
+#   ......
+#       volumeMounts:
+#       - mountPath: /var/run/secrets/kubernetes.io/serviceaccount
+#         name: kube-api-access-b4sh6
+#         readOnly: true
+#   ......
+#     serviceAccount: default
+#     serviceAccountName: default
+#   ......
+
+# $ kubectl get secrets -n ns-web
+#   NAME                  TYPE                                  DATA   AGE
+#   default-token-ccq7l   kubernetes.io/service-account-token   3      115s
+
+# $ kubectl get sa -n ns-web
+#   NAME      SECRETS   AGE
+#   default   1         2m10s
+
+# kubectl get sa -o yaml -n ns-web
+# kubectl get secrets -o yaml -n ns-web
+
+# The following commands will modify KUBECONFIG file: add user and context
+#
+# $ TOKEN=$(kubectl describe secrets "$(kubectl describe serviceaccount default -n ns-web| grep -i Tokens | awk '{print $2}')" -n ns-web | grep token: | awk '{print $2}')
+# $ NAME_OF_YOUR_CLUSTER=$(kubectl config view --minify -o jsonpath='{.clusters[].name}')
+# $ kubectl config set-credentials pod-reader --token=$TOKEN
+#   User "pod-reader" set.
+# $ kubectl config set-context pod-reader@$NAME_OF_YOUR_CLUSTER --cluster=$NAME_OF_YOUR_CLUSTER --user=pod-reader
+#   Context "pod-reader@kubernetes" created.
+# $ kubectl config use-context pod-reader@$NAME_OF_YOUR_CLUSTER
+#   Switched to context "pod-reader@kubernetes".
+# kubectl get all -o wide -n ns-web
+#   NAME                      READY   STATUS    RESTARTS   AGE   IP             NODE          NOMINATED NODE   READINESS GATES
+#   pod/web-9df6dcfc6-2pfgr   1/1     Running   0          16s   10.100.0.107   my-worker-1   <none>           <none>
+#   pod/web-9df6dcfc6-xx5fv   1/1     Running   0          16s   10.100.0.44    my-worker-2   <none>           <none>
+#   Error from server (Forbidden): replicationcontrollers is forbidden: User "system:serviceaccount:ns-web:default" cannot list resource "replicationcontrollers" in API group "" in the namespace "ns-web"
+#   Error from server (Forbidden): services is forbidden: User "system:serviceaccount:ns-web:default" cannot list resource "services" in API group "" in the namespace "ns-web"
+#   Error from server (Forbidden): daemonsets.apps is forbidden: User "system:serviceaccount:ns-web:default" cannot list resource "daemonsets" in API group "apps" in the namespace "ns-web"
+#   Error from server (Forbidden): deployments.apps is forbidden: User "system:serviceaccount:ns-web:default" cannot list resource "deployments" in API group "apps" in the namespace "ns-web"
+#   Error from server (Forbidden): replicasets.apps is forbidden: User "system:serviceaccount:ns-web:default" cannot list resource "replicasets" in API group "apps" in the namespace "ns-web"
+#   Error from server (Forbidden): statefulsets.apps is forbidden: User "system:serviceaccount:ns-web:default" cannot list resource "statefulsets" in API group "apps" in the namespace "ns-web"
+#   Error from server (Forbidden): horizontalpodautoscalers.autoscaling is forbidden: User "system:serviceaccount:ns-web:default" cannot list resource "horizontalpodautoscalers" in API group "autoscaling" in the namespace "ns-web"
+#   Error from server (Forbidden): cronjobs.batch is forbidden: User "system:serviceaccount:ns-web:default" cannot list resource "cronjobs" in API group "batch" in the namespace "ns-web"
+#   Error from server (Forbidden): jobs.batch is forbidden: User "system:serviceaccount:ns-web:default" cannot list resource "jobs" in API group "batch" in the namespace "ns-web"
+# $ kubectl config use-context kubernetes-admin@kubernetes
+#   Switched to context "kubernetes-admin@kubernetes".
+
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: ns-web
+
+---
+kind: Role                                  # Role sets permissions within a particular namespace; ClusterRole, by contrast, is a non-namespaced resource.
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  namespace: ns-web                         # Namespace it is granting access to
+  name: ns-web-pod-reader
+rules:
+- apiGroups: [""]                           # "" indicates the core API group
+  resources: ["pods"]
+  verbs: ["get", "watch", "list"]
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding                           # RoleBinding grants the permissions defined in a Role to a user or set of users.
+metadata:                                   # It holds a list of subjects (users, groups, or service accounts), and a reference to the role being granted.
+  name: web-rolebinding
+  namespace: ns-web                         # Namespace it is granting access to; may reference any Role in the same namespace; or a ClusterRole
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: ns-web-pod-reader
+subjects:
+- kind: ServiceAccount                      # Created when namespace ns-web is created
+  name: default
+  namespace: ns-web                         # Namespace and name should match the ServiceAccount
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: web
+  namespace: ns-web                         # This pod will use ServiceAccount default in this namespace
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: web
+  template:
+    metadata:
+      labels:
+        app: web
+    spec:
+      containers:
+        - name: web
+          image: nginx:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 80       # nginx service port
+              protocol: TCP
+

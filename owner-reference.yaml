@@ -1,0 +1,28 @@
+
+#
+# https://kubernetes.io/blog/2021/05/14/using-finalizers-to-control-deletion/
+#
+# $ kubectl delete configmap/mymap-parent        # Delete parent would cause child to be deleted too
+#   configmap "mymap-parent" deleted             # Delete child would not delete parent
+# $ kubectl get configmap/mymap-parent -oyaml
+#   Error from server (NotFound): configmaps "mymap-parent" not found
+# $ kubectl get configmap/mymap-child -oyaml
+#   Error from server (NotFound): configmaps "mymap-child" not found
+#
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: mymap-parent
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: mymap-child
+  ownerReferences:
+  - apiVersion: v1
+    kind: ConfigMap
+    name: mymap-parent
+    uid: 9520c271-cc46-4875-a59e-8afe09b3c972  #$CM_UID             # CM_UID=$(kubectl get configmap mymap-parent -o jsonpath="{.metadata.uid}")

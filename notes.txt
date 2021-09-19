@@ -58,3 +58,56 @@ iptables -I INPUT -p tcp --dport 443 -j ACCEPT
 iptables -I INPUT -p udp --dport 8285 -j ACCEPT
 iptables -I INPUT -p udp --dport 8472 -j ACCEPT
 
+====
+
+Master node inbound: TCP: 443  from Worker Nodes, API Requests, and End-Users
+                     UDP: 8285,8472 from Master & Worker Nodes
+
+
+Worker node inbound: TCP: 10250 from Master Nodes
+                     TCP: 10255 from Heapster
+                     TCP: 30000-32767 from External Application Consumers
+                     TCP: 1-32767 from Master & Worker Nodes
+                     TCP: 179 from Worker Nodes
+                     UDP: 8472 from Master & Worker Nodes
+                     UPD: 179 from Worker Nodes
+
+Etcd node inbound:  TCP: 2379-2380 from Master & Worker Nodes
+
+iptables -I INPUT -p tcp --dport 179 -j ACCEPT
+iptables -I INPUT -p udp --dport 179 -j ACCEPT
+
+# sysctl net.ipv4.ip_forward
+net.ipv4.ip_forward = 1
+
+echo 1 > /proc/sys/net/ipv4/ip_forward
+
+====
+
+# List taints for all nodes:
+kubectl get nodes -o jsonpath='{.items[*].spec.taints}'
+kubectl get nodes -o json | jq ".items[] | {name:.metadata.name, taints:.spec.taints}"
+
+# Add a taint to node1. The taint has key key1, value value1, and taint effect NoSchedule.
+# This means that no pod will be able to schedule onto node1 unless it has a matching toleration.
+kubectl taint nodes node1 key1=value1:NoSchedule
+
+# To remove the above-added taint:
+kubectl taint nodes node1 key1=value1:NoSchedule-
+
+# Remove node-role.kubernetes.io/master:NoSchedule taint:
+kubectl taint nodes $(hostname) node-role.kubernetes.io/master:NoSchedule-
+
+# Show labels of nodes
+kubectl get nodes --show-labels
+
+# Add labels to nodes
+kubectl label nodes <node-name> <label>   # kubectl label nodes $(hostname) disktype=ssd
+
+# Remove labels from nodes
+kubectl label node <node-name> <label>-   # # kubectl label nodes $(hostname) disktype-
+
+# Show podCIDR of nodes
+kubectl get nodes -o jsonpath='{.items[*].spec.podCIDR}'
+kubectl get nodes -o json | jq ".items[] | {name:.metadata.name, CIDR:.spec.podCIDR}"
+
